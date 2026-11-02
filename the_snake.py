@@ -1,5 +1,6 @@
 
 from random import randint
+
 import pygame
 
 # Инициализация Pygame
