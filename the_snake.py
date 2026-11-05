@@ -23,10 +23,9 @@
 """
 
 import random
+import sys
 
 import pygame as pg
-
-import sys
 
 # Инициализация Pygame
 pg.init()
