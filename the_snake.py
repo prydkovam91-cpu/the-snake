@@ -91,8 +91,8 @@ class GameObject:
     def draw(self):
         """Абстрактный метод отрисовки объекта целиком."""
         raise NotImplementedError(
-            "Метод draw() должен быть реализован в классах-потомках. "
-            "Базовый класс GameObject не предоставляет реализацию отрисовки."
+            'Метод draw() должен быть реализован в классах-потомках.'
+            'Базовый класс GameObject не предоставляет реализацию отрисовки.'
         )
 
     def _draw_cell(self, position, color=None, border_width=1):
