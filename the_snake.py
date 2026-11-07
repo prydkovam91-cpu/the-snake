@@ -1,5 +1,6 @@
 
-"""Игра «Змейка»
+"""Игра «Змейка».
+
 
 Это реализация классической игры «Змейка» с использованием библиотеки Pygame.
 Основные возможности:
@@ -36,11 +37,21 @@ GRID_SIZE = 20
 GRID_WIDTH = SCREEN_WIDTH // GRID_SIZE
 GRID_HEIGHT = SCREEN_HEIGHT // GRID_SIZE
 
+# Все возможные позиции на игровом поле (в пиксельных координатах)
+ALL_GRID_POSITIONS = [
+    (grid_x * GRID_SIZE, grid_y * GRID_SIZE)
+    for grid_x in range(GRID_WIDTH)
+    for grid_y in range(GRID_HEIGHT)
+]
+
 # Направления движения:
 UP = (0, -1)
 DOWN = (0, 1)
 LEFT = (-1, 0)
 RIGHT = (1, 0)
+
+# Кортеж направлений — неизменяемая константа
+DIRECTIONS = (UP, DOWN, LEFT, RIGHT)
 
 # Словарь для сопоставления нажатий клавиш с направлениями
 KEY_TO_DIRECTION = {
@@ -78,12 +89,11 @@ class GameObject:
         self.body_color = body_color
 
     def draw(self):
-        """
-        Абстрактный метод отрисовки объекта целиком.
-        Должен быть реализован в классах‑потомках.
-        Использует глобальную переменную screen.
-        """
-        raise NotImplementedError
+        """Абстрактный метод отрисовки объекта целиком."""
+        raise NotImplementedError(
+            "Метод draw() должен быть реализован в классах-потомках. "
+            "Базовый класс GameObject не предоставляет реализацию отрисовки."
+        )
 
     def _draw_cell(self, position, color=None, border_width=1):
         """
@@ -123,20 +133,18 @@ class Apple(GameObject):
         Args:
             occupied_positions: множество занятых позиций на игровом поле.
         """
-        available_positions = []
+        # Получаем доступные позиции, исключая занятые
+        available_positions = [
+            pos for pos in ALL_GRID_POSITIONS
+            if pos not in occupied_positions
+        ]
 
-        # Собираем все возможные позиции на поле
-        for grid_x in range(GRID_WIDTH):
-            for grid_y in range(GRID_HEIGHT):
-                position = (grid_x * GRID_SIZE, grid_y * GRID_SIZE)
-                if position not in occupied_positions:
-                    available_positions.append(position)
-
-        if available_positions:
-            self.position = random.choice(available_positions)
-        else:
-            # Если все клетки заняты (крайне редкий случай), ставим в центр
-            self.position = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+        # Выбираем случайную позицию или ставим в центр, если все заняты
+        self.position = (
+            random.choice(available_positions)
+            if available_positions
+            else (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+        )
 
     def draw(self):
         """Отрисовывает яблоко как одну ячейку."""
@@ -148,23 +156,24 @@ class Snake(GameObject):
 
     def __init__(self, body_color=SNAKE_COLOR):
         """Инициализирует змейку: стартовая позиция, направление, длина."""
-        start_x, start_y = self._get_center_position()
-        super().__init__((start_x, start_y), body_color)
+        # Сначала вызываем родительский конструктор
+        super().__init__(None, body_color)
+        # Инициализируем специфичные для змейки поля через reset()
         self.reset()
 
     def _get_center_position(self):
         """Возвращает координаты центральной клетки игрового поля."""
-        x = (GRID_WIDTH // 2) * GRID_SIZE
-        y = (GRID_HEIGHT // 2) * GRID_SIZE
-        return x, y
+        center_x = (GRID_WIDTH // 2) * GRID_SIZE
+        center_y = (GRID_HEIGHT // 2) * GRID_SIZE
+        return center_x, center_y
 
     def reset(self):
         """Сбрасывает змейку в начальное состояние."""
         start_x, start_y = self._get_center_position()
         self.position = (start_x, start_y)
         self.positions = [self.position]
-        directions = [UP, DOWN, LEFT, RIGHT]
-        self.direction = random.choice(directions)
+        # Используем глобальную константу вместо локальной переменной
+        self.direction = random.choice(DIRECTIONS)
         self.last = None
         self.eaten_apples = 0
         self.length = 1
@@ -214,6 +223,9 @@ class Snake(GameObject):
         # Удаляем хвост, если длина превышает допустимую
         if len(self.positions) > self.length:
             self.positions.pop()  # удаляем последний элемент (старый хвост)
+        else:
+            # Критически важная правка: зануляем last, если хвост не удалялся
+            self.last = None
 
     def check_eat_apple(self, apple):
         """Проверяет, съела ли змейка яблоко."""
@@ -233,16 +245,16 @@ class Snake(GameObject):
     def draw(self):
         """Отрисовывает змейку: голову, тело и затирает старый хвост."""
         # Затираем последний сегмент
-        if self.last:
+        if self.last is not None:
             self._draw_cell(self.last, BOARD_BACKGROUND_COLOR, 0)
 
-        # Рисуем голову
-        head_position = self.positions[0]
+        # Рисуем голову — используем метод для получения позиции головы
+        head_position = self.get_head_position()
         self._draw_cell(head_position)
 
-        # Рисуем тело
-        for position in self.positions[1:]:
-            self._draw_cell(position)
+    def reset_render_flag(self):
+        """Сбрасывает флаг отрисовки после сброса игры."""
+        self.just_reset = False
 
 
 def handle_keys(snake):
@@ -271,6 +283,7 @@ def update_game_state(snake, apple):
     snake.move()
 
     need_reposition = False
+    force_full_redraw = False  # Флаг для полной перерисовки
 
     # Проверяем поедание яблока
     if snake.check_eat_apple(apple):
@@ -281,6 +294,7 @@ def update_game_state(snake, apple):
     head = snake.get_head_position()
     if head in snake.positions[1:]:
         snake.reset()
+        force_full_redraw = True  # При столкновении заливаем фон целиком
         need_reposition = True
 
     # Перепозиционируем яблоко один раз, если нужно
@@ -288,18 +302,25 @@ def update_game_state(snake, apple):
         occupied_positions = set(snake.positions)
         apple.randomize_position(occupied_positions)
 
+    return force_full_redraw  # Возвращаем флаг для отрисовки
 
-def draw_game(snake, apple, first_draw=False):
+
+def draw_game(snake, apple, first_draw=False, force_full_redraw=False):
     """
     Отрисовывает игровое поле.
-    first_draw: True при первом запуске или сбросе игры.
+
+    Args:
+        snake (Snake): экземпляр змейки.
+        apple (Apple): экземпляр яблока.
+        first_draw (bool): True при первом запуске.
+        force_full_redraw (bool): True для полной перерисовки.
     """
-    # Заполняем фон только при старте или сбросе
-    if first_draw or snake.just_reset:
+    if first_draw or force_full_redraw:
         screen.fill(BOARD_BACKGROUND_COLOR)
-        snake.just_reset = False  # Сбрасываем флаг после отрисовки
+        # Вызываем метод класса вместо прямой модификации
+        snake.reset_render_flag()
     else:
-        # Стираем только старый хвост змейки
+        # Затираем только старый хвост змейки
         if snake.last is not None:
             snake._draw_cell(snake.last, BOARD_BACKGROUND_COLOR, 0)
     # Отрисовываем объекты (они сами используют глобальный screen)
@@ -323,10 +344,16 @@ def main():
         current_speed = snake.get_current_speed()
         clock.tick(current_speed)
         handle_keys(snake)
-        update_game_state(snake, apple)
-        # Отрисовываем игру, передавая флаг первой отрисовки
-        draw_game(snake, apple, first_draw=first_draw)
-        # После первой итерации сбрасываем флаг
+        # Получаем флаг полной перерисовки
+        force_full_redraw = update_game_state(snake, apple)
+
+        # Отрисовываем игру с учётом флага
+        draw_game(
+            snake,
+            apple,
+            first_draw=first_draw,
+            force_full_redraw=force_full_redraw
+        )
         first_draw = False
 
 
